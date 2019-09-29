@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using AngleSharp;
+using AngleSharp.Common;
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
 using Newtonsoft.Json;
@@ -15,7 +17,8 @@ namespace AngleSharpTest
     {
         public static void Main(string[] args)
         {
-//            Sharp();
+            //            Sharp();
+            //StoreAllBikeBdDataToJson();
             GetAllBikeBdData();
         }
 
@@ -54,25 +57,31 @@ namespace AngleSharpTest
                     });
                 }
             }
-
             SaveAsJsonFile(JsonConvert.SerializeObject(bikesUrls), "bikesUrls");
 
+
+            // Get All bikes from bikes Url
+            List<Bike> bikeLists = new List<Bike>();
+            foreach (var bike in bikesUrls)
+            {
+                bikeLists.Add(await GetBikeInfo(bike));
+            }
+            SaveAsJsonFile(JsonConvert.SerializeObject(bikeLists), "bikeLists");
         }
 
         public static async void GetAllBikeBdData()
         {
             // Get All bike Brands
-            List<BikeBrands> bikeBrands = JsonConvert.DeserializeObject<List<BikeBrands>>(File.ReadAllText("BikeBrands.json"));
+            //List<BikeBrands> bikeBrands = JsonConvert.DeserializeObject<List<BikeBrands>>(File.ReadAllText("BikeBrands.json"));
 
             // Get all bikes Url for each brand
-            List<BikesUrl> bikesUrls = JsonConvert.DeserializeObject<List<BikesUrl>>(File.ReadAllText("bikesUrls.json"));
+            //List<BikesUrl> bikesUrls = JsonConvert.DeserializeObject<List<BikesUrl>>(File.ReadAllText("bikesUrls.json"));
 
-            List<Bike> bikesList = new List<Bike>();
+            // Get All bikes
+            List<BikesUrl> bikeLists = JsonConvert.DeserializeObject<List<BikesUrl>>(File.ReadAllText("bikeLists.json"));
 
-            foreach (var bike in bikesUrls)
-            {
-                bikesList.Add(await GetBikeInfo(bike));
-            }
+
+            
 
             Console.Read();
         }
@@ -81,30 +90,108 @@ namespace AngleSharpTest
         {
             // Get DOM
             var context = BrowsingContext.New(Configuration.Default);
-            var document = await context.OpenAsync(async req => req.Content(await GetContent(b.Url)));
+            var document = await context.OpenAsync(async req => req.Content(await GetContent("https://www.bikebd.com/bikes/hero-achiever-150/")));
+            //var document = await context.OpenAsync(async req => req.Content(await GetContent(b.Url)));
 
             Bike bike = new Bike();
             bike.BrandId = b.BrandId;
 
-            bike.Name = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.row > div.single_title > h4").First().InnerHtml;
+            bike.PostTitle = document.Title;
+
+            var imageOwls = document
+                .QuerySelectorAll(
+                    "body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.single_post_thumb")
+                .FirstOrDefault()?.ChildNodes[0].ChildNodes;
+
+
+            List<string> bikeImages = new List<string>();
+
+            foreach (var img in imageOwls)
+            {
+                var imageDiv = img.ToHtml();
+
+                string src = Regex.Match(imageDiv, "<img.+?src=[\"'](.+?)[\"'].*?>", RegexOptions.IgnoreCase).Groups[1].Value;
+                bikeImages.Add(src);
+            }
+
+            bike.Images = bikeImages.ToArray();
+
+
+            bike.Name = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(1) > div.col-sm-9 > div > h4").FirstOrDefault()?.TextContent;
 
             // Basic
-            bike.Features = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(1) > table > tbody > tr").FirstOrDefault()?.ChildNodes[0].TextContent;
-            bike.DisplacementCC = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(1) > table > tbody > tr").FirstOrDefault()?.ChildNodes[1].TextContent;
-            bike.Mileage = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(1) > table > tbody > tr").FirstOrDefault()?.ChildNodes[2].TextContent;
+            bike.Features = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(1) > table > tbody > tr > td:nth-child(1)").FirstOrDefault()?.TextContent;
+            bike.DisplacementCC = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(1) > table > tbody > tr > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.Mileage = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(1) > table > tbody > tr > td:nth-child(3)").FirstOrDefault()?.TextContent;
 
             // Bike Overview
-            bike.Price = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
-            bike.FuelSupplySystem = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
-            bike.StartingMethod = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
-            bike.CoolingSystem = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(4) > td:nth-child(2)").FirstOrDefault()?.TextContent;
-            bike.EngineeOilRecommendation = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(5) > td:nth-child(2)").FirstOrDefault()?.TextContent;
-            bike.TyresType = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(6) > td:nth-child(2)").FirstOrDefault()?.TextContent;
-            bike.TopSpeed = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(7) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.Price = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.FuelSupplySystem = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.StartingMethod = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.CoolingSystem = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(4) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.EngineeOilRecommendation = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(5) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.TyresType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(6) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.TopSpeed = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(7) > td:nth-child(2)").FirstOrDefault()?.TextContent;
 
             // Specifications
-            bike.TopSpeed = document.QuerySelectorAll("div.bikebd_posts_area >  div.post_item single_bikes > div.full_specifications > div:nth-child(2) > table > tbody > tr:nth-child(7) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.EngineeType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(5) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.MaximumPower = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(5) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.MaximumTorque = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(5) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.Bore = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(5) > table > tbody > tr:nth-child(4) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.Stroke = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(5) > table > tbody > tr:nth-child(5) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.CompressionRatio = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(5) > table > tbody > tr:nth-child(6) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.NoOfCylinders = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(5) > table > tbody > tr:nth-child(7) > td:nth-child(2)").FirstOrDefault()?.TextContent;
 
+            // Transmission
+            bike.TransmissionType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(6) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.NoOfGears = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(6) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.ClutchType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(6) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+
+
+            // Chassis & Suspension
+            bike.ChassisType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(7) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.FrontSuspension = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(7) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.RearSuspension = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(7) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+
+
+            // Brakes
+            bike.FrontBrakeType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(8) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.RearBrakeType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(8) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.FrontBrakeDiameter = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(8) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.RearBrakeDiameter = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(8) > table > tbody > tr:nth-child(4) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.AntiLockBrakingSystem_ABS = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(8) > table > tbody > tr:nth-child(5) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+
+
+            // Wheels & Tires
+            bike.FrontTireSize = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(9) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.RearTireSize = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(9) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.TubelessTires = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(9) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+
+
+            // Dimensions
+            bike.OverallLength = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(10) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.OverallWidth = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(10) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.OverallHeight = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(10) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.GroundClearance = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(10) > table > tbody > tr:nth-child(4) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.Weight = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(10) > table > tbody > tr:nth-child(5) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.FuelTankCapacity = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(10) > table > tbody > tr:nth-child(6) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.Wheelbase = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(10) > table > tbody > tr:nth-child(7) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+
+            // Electricals
+            bike.BatteryType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(11) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.BatteryVoltage = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(11) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.HeadLight = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(11) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.TailLight = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(11) > table > tbody > tr:nth-child(4) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.Indicators = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(11) > table > tbody > tr:nth-child(5) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+
+            // Features
+            bike.Speedometer = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(12) > table > tbody > tr:nth-child(1) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.Odometer = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(12) > table > tbody > tr:nth-child(2) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.RPMMeter = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(12) > table > tbody > tr:nth-child(3) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.HandleType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(12) > table > tbody > tr:nth-child(4) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.SeatType = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(12) > table > tbody > tr:nth-child(5) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.PassengerGrabRail = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(12) > table > tbody > tr:nth-child(6) > td:nth-child(2)").FirstOrDefault()?.TextContent;
+            bike.EngineKillSwitch = document.QuerySelectorAll("body > div.full-width > section.bikebd_main_content_area > div > div > div.col-sm-7 > div.bikebd_posts_area > div > div:nth-child(12) > table > tbody > tr:nth-child(7) > td:nth-child(2)").FirstOrDefault()?.TextContent;
 
             return bike;
         }
@@ -165,9 +252,10 @@ namespace AngleSharpTest
 
             if (Single)
             {
-                var bikePost = document.QuerySelectorAll("article > div.entry-content > h2 > a");
+                var bikePost = document.QuerySelectorAll("div.entry-content > h2").FirstOrDefault()?.ToHtml();
 
-                var href = ((IHtmlAnchorElement)bikePost.First()).Href;
+                string href = Regex.Match(bikePost, "<a.+?href=[\"'](.+?)[\"'].*?>", RegexOptions.IgnoreCase).Groups[1].Value;
+                //var href = ((IHtmlAnchorElement)bikePost)?.Href;
 
                 bikesUrls.Add(href);
 
@@ -253,9 +341,12 @@ namespace AngleSharpTest
     {
         public int Id { get; set; }
         public int BrandId { get; set; }
+
+        public string PostTitle { get; set; }
+
         public string Name { get; set; }
 
-        public string Image { get; set; }
+        public string[] Images { get; set; }
 
         // Basic
         public string Features { get; set; }
